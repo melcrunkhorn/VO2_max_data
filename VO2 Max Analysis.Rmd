@@ -1,0 +1,199 @@
+---
+title: "VO2 Max Data Analysis"
+author: "Mel Crunkhorn"
+date: "25/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{load library and packages, echo=FALSE}
+library(tidyverse)
+library(readxl)
+library(Lahman)
+library(cars)
+library(broom)
+```
+```{r read in data file, echo=FALSE}
+library(readxl)
+df <- read_excel("data/vo2-max_data.xlsx")
+```
+
+```{r structure, echo=FALSE}
+str(df)
+```
+
+```{r head, echo=FALSE}
+head(df)
+```
+```{r tail, echo=FALSE}
+tail(df)
+```
+```{r convert gender to categorical variable, echo=FALSE}
+df$gender <- as.factor(df$gender)
+```
+
+```{r relationship between age and VO2 max, echo=FALSE}
+ggplot(data = df, aes(x = age, y = vo2_max)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+```{r relationship between weight and VO2 max, echo=FALSE}
+ggplot(data = df, aes(x = weight, y = vo2_max)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+```{r relationship between heart_rate and VO2 max, echo=FALSE}
+ggplot(data = df, aes(x = heart_rate, y = vo2_max)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+```{r difference between gender and VO2 max, echo=FALSE}
+ggplot(data = df, aes(x = gender, y = vo2_max)) +
+  geom_boxplot(aes(fill = gender)) 
+```
+```{r relationship between age and VO2 max with gender, echo=FALSE}
+ggplot(data = df, aes(x = age, y = vo2_max, colour = gender)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+```{r relationship between weight and VO2 max and gender, echo=FALSE}
+ggplot(data = df, aes(x = weight, y = vo2_max, colour = gender)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+```{r relationship between heart_rate and VO2 max and gender, echo=FALSE}
+ggplot(data = df, aes(x = heart_rate, y = vo2_max, colour = gender)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+```{r testing for multicollinearity, echo=FALSE}
+pairs(formula = ~ age + weight + heart_rate, data = df)
+```
+```{r multiple linear regression slope co-eff, echo=FALSE}
+library(broom)
+fit <- lm(vo2_max ~ age + weight + heart_rate + gender, data = df)
+tidy(fit,conf.int = TRUE)
+```
+
+```{r summary of linear model, echo=FALSE}
+summary(fit)
+```
+```{r step 7 interdependence, echo=FALSE}
+car::durbinWatsonTest(fit)
+```
+
+```{r step 8 outliers, echo=FALSE}
+std_res <- rstandard(fit)
+points <- 1:length(std_res)
+```
+```{r plot outliers, echo=FALSE}
+ggplot(data = NULL, aes(x = points, y = std_res)) +
+  geom_point() +
+  ylim(c(-4,4)) +
+  geom_hline(yintercept = c(-3, 3), colour = "red", linetype = "dashed")
+```
+```{r labelling the outliers, echo=FALSE}
+res_labels <- if_else(abs(std_res) >= 2.5, paste(points), "")
+```
+
+```{r, plotting points, echo=FALSE}
+ggplot(data = NULL, aes(x = points, y = std_res, label = res_labels)) +
+  geom_point() +
+  geom_text(nudge_x = 2) +
+  ylim(c(-4,4)) +
+  geom_hline(yintercept = c(-3, 3), colour = "red", linetype = "dashed")
+```
+```{r step 9 leverage points, echo=FALSE}
+hats <- hatvalues(fit)
+```
+
+```{r plot of leverage points, echo=FALSE}
+ggplot(data = NULL, aes(x = points, y = hats)) + 
+  geom_point()
+```
+```{r investigate values > 0.15, echo=FALSE}
+hat_labels <- if_else(hats >=0.15, paste(points), "")
+```
+
+```{r plot of the labels, echo=FALSE}
+ggplot(data = NULL, aes(x = points, y = hats)) +
+  geom_point() +
+  geom_text(aes(label = hat_labels), nudge_y = 0.005)
+```
+```{r step 10 influencial points,echo=FALSE}
+cook <- cooks.distance(fit)
+```
+
+```{r plot of cooks distance, echo=FALSE}
+ggplot(data = NULL, aes(x = points, y = cook)) +
+  geom_point()
+```
+```{r investigate points above 0.075, echo=FALSE}
+cook_labels <- if_else(cook >= 0.075, paste(points), "")
+```
+
+```{r, plot the points, echo=FALSE}
+ggplot(data = NULL, aes(x = points, y = cook)) +
+  geom_point() +
+  geom_text(aes(label = cook_labels), nudge_x = 2)
+```
+```{r create new df without the high influence points, echo=FALSE}
+outliers <- c(25, 28, 32, 35,41, 73)
+filtered_df <- df %>%
+  filter(!subject_id %in% outliers)
+```
+
+```{r re-run linear regression with filtered_df, echo=FALSE}
+fit2 <- lm(vo2_max ~ age + weight + heart_rate + gender, data = filtered_df)
+tidy(fit2, conf.int = TRUE)
+```
+
+```{r summary of linear model 2, echo=FALSE}
+summary(fit2)
+```
+```{r step 11 homoscedasticity, echo=FALSE}
+res <- residuals(fit)
+fitted <- predict(fit)
+```
+
+```{r plot to test for homoscedasticity, echo=FALSE}
+ggplot(data = NULL, aes(x = fitted, y = res)) +
+  geom_point(colour = "dodgerblue") +
+  geom_hline(yintercept = 0, colour ="red", linetype = "dashed")
+```
+```{r step 12 Normality, echo=FALSE}
+ggplot(data = NULL, aes(x = res)) +
+  geom_histogram(colour = "black", fill = "dodgerblue", binwidth = 4)
+```
+```{r testing for normality of histogram, echo=FALSE}
+ggplot(data = NULL, aes(sample = res)) +
+  stat_qq() + stat_qq_line()
+```
+```{r step 13 multicollinearity, echo=FALSE}
+car::vif(fit)
+```
+
+```{r step 14 Linearity, echo=FALSE}
+car::avPlots(fit)
+```
+```{r step 15 interpretation, echo=FALSE}
+87.8 + 31 * -0.165 + 68 * -0.385 + 140 * -0.118 + 0 * 13.2
+```
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
